@@ -1315,6 +1315,7 @@ public:
 
 		bool AddArc(float x, float y, float width, float height, float angle, SweepDirections direction, ArcSizes size);
 		bool AddLine(float x, float y);
+		bool AddLines(const Vector2F* points, size_t count);
 		bool AddBezier(const Vector2F& point1, const Vector2F& point2, const Vector2F& point3);
 		bool AddQBezier(const Vector2F& point1, const Vector2F& point2);
 

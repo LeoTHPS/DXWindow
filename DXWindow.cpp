@@ -1453,6 +1453,16 @@ bool DXWindow::PathGeometry::AddLine(float x, float y)
 
 	return true;
 }
+bool DXWindow::PathGeometry::AddLines(const Vector2F* points, size_t count)
+{
+	if (!IsLoaded() || IsFinalized())
+		return false;
+
+	for (size_t i = 0; i < count; ++i, ++points)
+		geometry_sink->AddLine(D2D1::Point2F(points->X, points->X));
+
+	return true;
+}
 bool DXWindow::PathGeometry::AddBezier(const Vector2F& point1, const Vector2F& point2, const Vector2F& point3)
 {
 	if (!IsLoaded() || IsFinalized())
