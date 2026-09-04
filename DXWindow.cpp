@@ -3654,7 +3654,7 @@ LRESULT  CALLBACK DXWindow::DXWindow::WndProc(HWND hWnd, UINT msg, WPARAM wParam
 				window->mouse.buttons_down_prev[(int)MouseButtons::Middle] = window->mouse.buttons_down[(int)MouseButtons::Middle];
 				window->mouse.buttons_down[(int)MouseButtons::Middle]      = false;
 
-				if (!window->OnMouseButtonDown(window->mouse.position, MouseButtons::Middle))
+				if (!window->OnMouseButtonUp(window->mouse.position, MouseButtons::Middle))
 					window->Close();
 			}
 			break;
