@@ -25,7 +25,7 @@ target_include_directories(DXWindow PUBLIC
 	${CMAKE_CURRENT_LIST_DIR}
 )
 if(TARGET FIO)
-	target_link_libraries(DXWindow PRIVATE FIO)
+	target_link_libraries(DXWindow PUBLIC FIO)
 	target_compile_definitions(DXWindow PUBLIC DXWINDOW_FIO=1)
 endif()
 if(TARGET imgui)
