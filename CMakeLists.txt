@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.24)
 set(CMAKE_C_STANDARD   17)
 set(CMAKE_CXX_STANDARD 20)
 
-# FIO can be removed but it will take support for loading DXWindow::Sound from file
+# FIO can be removed but it will remove support for loading DXWindow::Sound from file
 include(FIO.cmake)
 
 # ImGui can be removed
