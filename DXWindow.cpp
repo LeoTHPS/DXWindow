@@ -12,13 +12,13 @@
 	extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 #endif
 
-struct WindowIcon
+struct DXWindowIcon
 {
 	DXWindow::Icons Icon;
 	HICON(*         LoadIcon)();
 };
 
-constexpr const WindowIcon WINDOW_ICONS[(size_t)DXWindow::Icons::COUNT] =
+constexpr const DXWindowIcon DXWINDOW_ICONS[(size_t)DXWindow::Icons::COUNT] =
 {
 	{ DXWindow::Icons::None,        []() { return (HICON)NULL; }                     },
 	{ DXWindow::Icons::Error,       []() { return LoadIconA(NULL, IDI_HAND); }        },
@@ -29,19 +29,19 @@ constexpr const WindowIcon WINDOW_ICONS[(size_t)DXWindow::Icons::COUNT] =
 	{ DXWindow::Icons::UserDefined, []() { return (HICON)NULL; }                     }
 };
 template<size_t ... I>
-consteval bool static_assert_window_icons(std::index_sequence<I ...>)
+consteval bool static_assert_dxwindow_icons(std::index_sequence<I ...>)
 {
-	return ((WINDOW_ICONS[I].Icon == (DXWindow::Icons)I) && ...);
+	return ((DXWINDOW_ICONS[I].Icon == (DXWindow::Icons)I) && ...);
 }
-static_assert(static_assert_window_icons(std::make_index_sequence<(size_t)DXWindow::Icons::COUNT> {}));
+static_assert(static_assert_dxwindow_icons(std::make_index_sequence<(size_t)DXWindow::Icons::COUNT> {}));
 
-struct WindowCursor
+struct DXWindowCursor
 {
 	DXWindow::Cursors Cursor;
 	HCURSOR(*         LoadCursor)();
 };
 
-constexpr const WindowCursor WINDOW_CURSORS[(size_t)DXWindow::Cursors::COUNT] =
+constexpr const DXWindowCursor DXWINDOW_CURSORS[(size_t)DXWindow::Cursors::COUNT] =
 {
 	{ DXWindow::Cursors::None,        []() { return (HCURSOR)NULL; }                      },
 	{ DXWindow::Cursors::No,          []() { return LoadCursorA(NULL, IDC_NO); }          },
@@ -61,11 +61,11 @@ constexpr const WindowCursor WINDOW_CURSORS[(size_t)DXWindow::Cursors::COUNT] =
 	{ DXWindow::Cursors::UserDefined, []() { return (HCURSOR)NULL; }                      }
 };
 template<size_t ... I>
-consteval bool static_assert_window_cursors(std::index_sequence<I ...>)
+consteval bool static_assert_dxwindow_cursors(std::index_sequence<I ...>)
 {
-	return ((WINDOW_CURSORS[I].Cursor == (DXWindow::Cursors)I) && ...);
+	return ((DXWINDOW_CURSORS[I].Cursor == (DXWindow::Cursors)I) && ...);
 }
-static_assert(static_assert_window_cursors(std::make_index_sequence<(size_t)DXWindow::Cursors::COUNT> {}));
+static_assert(static_assert_dxwindow_cursors(std::make_index_sequence<(size_t)DXWindow::Cursors::COUNT> {}));
 
 const DXWindow::Color    DXWindow::Color::Black          = DXWindow::Color::FromARGB(0xFF000000);
 const DXWindow::Color    DXWindow::Color::White          = DXWindow::Color::FromARGB(0xFFFFFFFF);
@@ -1962,7 +1962,7 @@ bool DXWindow::DXWindow::SetIcon(Icons value)
 		return false;
 
 	icon.Type   = value;
-	icon.Handle = WINDOW_ICONS[(size_t)value].LoadIconA();
+	icon.Handle = DXWINDOW_ICONS[(size_t)value].LoadIconA();
 
 	if (IsOpen())
 	{
@@ -2076,7 +2076,7 @@ bool DXWindow::DXWindow::PushCursor(Cursors value)
 
 	cursors.push({
 		.Type   = value,
-		.Handle = WINDOW_CURSORS[(size_t)value].LoadCursorA()
+		.Handle = DXWINDOW_CURSORS[(size_t)value].LoadCursorA()
 	});
 
 	cursor = &cursors.top();
