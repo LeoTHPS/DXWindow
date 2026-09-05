@@ -1,7 +1,6 @@
 #pragma once
 #include <set>
 #include <list>
-#include <cmath>
 #include <stack>
 #include <string>
 #include <vector>
@@ -358,11 +357,11 @@ public:
 
 		static constexpr Color FromHSL(float h, float s, float l, float a = 1)
 		{
-			float q     = (l < 0.5f) ? (l * (1 + s)) : (l + s - l * s);
-			float p     = 2 * l - q;
+			float q     = (l < 0.5f) ? (l * (1.0f + s)) : (l + s - l * s);
+			float p     = 2.0f * l - q;
 			Color color = { .A = a, .R = l, .G = l, .B = l };
 
-			h = std::fmodf(h, 1.0f);
+			h = fmodf(h, 1.0f);
 
 			if (h < 0.0f)
 				h += 1.0f;
@@ -418,9 +417,20 @@ public:
 		}
 
 	private:
+		static constexpr float fmodf(float x, float y)
+		{
+			return x - y * floorf(x / y);
+		}
+		static constexpr float floorf(float x)
+		{
+			const int i = (int)x;
+
+			return (i > x) ? (float)(i - 1) : (float)i;
+		}
+
 		static constexpr float FromHue(float p, float q, float t)
 		{
-			t = std::fmodf(t, 1.0f);
+			t = fmodf(t, 1.0f);
 
 			if (t < 0.0f)
 				t += 1.0f;
