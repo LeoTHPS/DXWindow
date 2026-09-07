@@ -1,13 +1,11 @@
+#include <atomic>
+#include <chrono>
 #include <format>
 #include <thread>
 #include <iostream>
 #include <iterator>
 
 #include <DXWindow.hpp>
-
-// inherited from DXWindow
-#include <FIO/Timer.hpp>
-#include <FIO/SpinLock.hpp>
 
 class demo
 	: public DXWindow
@@ -16,8 +14,8 @@ class demo
 	Brush                          brush;
 	PathGeometry                   geometry;
 
-	static inline FIO::SpinLock    print_lock;
-	static inline const FIO::Timer print_timer;
+	static inline std::atomic_flag print_lock;
+	static inline const auto       print_timer = std::chrono::steady_clock::now();
 
 public:
 	demo()
@@ -56,80 +54,19 @@ protected:
 
 		return true;
 	}
-	virtual bool OnDrawGUI() override
-	{
-		ImGui::ShowDemoWindow();
-
-		return true;
-	}
-
-	virtual bool OnDropFile(const Vector2F& position, std::wstring_view path) override
-	{
-		Print(L"OnDropFile([X:{}, Y:{}], L\"{}\")", position.X, position.Y, path);
-
-		return true;
-	}
-
-	virtual bool OnMouseMove(const Vector2F& position) override
-	{
-		Print(L"OnMouseMove([X:{}, Y:{}])", position.X, position.Y);
-
-		return true;
-	}
-	virtual bool OnMouseScroll(const Vector2F& position, int delta) override
-	{
-		Print(L"OnMouseScroll([X:{}, Y:{}], {})", position.X, position.Y, delta);
-
-		return true;
-	}
-	virtual bool OnMouseButtonUp(const Vector2F& position, MouseButtons button) override
-	{
-		Print(L"OnMouseButtonUp([X:{}, Y:{}], {})", position.X, position.Y, (int)button);
-
-		return true;
-	}
-	virtual bool OnMouseButtonDown(const Vector2F& position, MouseButtons button) override
-	{
-		Print(L"OnMouseButtonDown([X:{}, Y:{}], {})", position.X, position.Y, (int)button);
-
-		return true;
-	}
-
-	virtual bool OnKeyboardChar(wchar_t value) override
-	{
-		Print(L"OnKeyboardChar(L'{}')", value);
-
-		return true;
-	}
-	virtual bool OnKeyboardKeyUp(Keys key) override
-	{
-		Print(L"OnKeyboardKeyUp({})", (int)key);
-
-		return true;
-	}
-	virtual bool OnKeyboardKeyDown(Keys key) override
-	{
-		Print(L"OnKeyboardKeyDown({})", (int)key);
-
-		return true;
-	}
-
-	virtual bool OnResolutionChanged(uint32_t width, uint32_t height) override
-	{
-		Print(L"OnResolutionChanged({}, {})", width, height);
-
-		return true;
-	}
 
 private:
 	template<typename ... TArgs>
 	static void Print(std::wstring_view format, TArgs ... args)
 	{
 		std::ostreambuf_iterator<wchar_t> it(std::wcout);
+		auto                              time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - print_timer).count();
 
-		FIO::SpinLockGuard lock(print_lock);
+		while (print_lock.test_and_set(std::memory_order_acquire))
+			while (print_lock.test(std::memory_order_relaxed))
+				;
 
-		std::format_to(it, L"[{:.6f}] ", print_timer.GetElapsed().ToMicroseconds() / 1000000.0f);
+		std::format_to(it, L"[{:.6f}] ", time / 1000000.0f);
 		std::wcout << '[' << std::this_thread::get_id() << "] ";
 
 		if constexpr (sizeof...(TArgs) == 0)
@@ -138,6 +75,8 @@ private:
 			std::vformat_to(it, format, std::make_wformat_args(args ...));
 
 		std::wcout << std::endl;
+
+		print_lock.clear(std::memory_order_release);
 	}
 };
 
@@ -145,8 +84,9 @@ int main(int argc, char* argv[])
 {
 	demo d;
 
-	while (d.IsOpen() && d.Poll() && d.Draw())
-		;
+	if (d.Open())
+		while (d.Poll() && d.Draw())
+			;
 
 	return 0;
 }

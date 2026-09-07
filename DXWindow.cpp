@@ -1,16 +1,8 @@
 #include "DXWindow.hpp"
 
-#ifdef DXWINDOW_FIO
-	#include <FIO/File.hpp>
-#endif
-
 #include <cwctype>
 
 #include <shellapi.h>
-
-#ifdef DXWINDOW_IMGUI
-	extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
-#endif
 
 struct DXWindowIcon
 {
@@ -399,29 +391,34 @@ bool DXWindow::Sound::Load()
 	{
 		case Types::File:
 		{
-#ifdef DXWINDOW_FIO
-			FIO::File file(path, FIO::File::MODE_READ);
+			HANDLE                    file_handle;
+			WIN32_FILE_ATTRIBUTE_DATA file_attributes;
 
-			switch (file.Open())
-			{
-				case 0:  return false;
-				case -1: return false;
-			}
+			if (!GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &file_attributes))
+				return false;
 
-			std::vector<uint8_t> buffer((size_t)file.GetSize());
+			if ((file_handle = CreateFileW(path.c_str(), FILE_GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr)) == INVALID_HANDLE_VALUE)
+				return false;
+
+			std::vector<uint8_t> buffer(((uint64_t)file_attributes.nFileSizeHigh << 32) | (uint64_t)file_attributes.nFileSizeLow);
 
 			for (size_t i = 0; i < buffer.size(); )
 			{
-				size_t num_bytes_read;
+				DWORD num_bytes_read;
 
-				if (!file.Read(&buffer[i], buffer.size() - i, num_bytes_read))
+				if (!ReadFile(GetHandle(), (LPVOID)&buffer[i], (DWORD)(buffer.size() - i), &num_bytes_read, nullptr))
+				{
+					CloseHandle(file_handle);
+
 					return false;
+				}
 
 				i += num_bytes_read;
 			}
 
+			CloseHandle(file_handle);
+
 			return LoadWave(buffer.data(), buffer.size());
-#endif
 		}
 		break;
 
@@ -1891,7 +1888,7 @@ bool DXWindow::Transform::operator != (const Transform& transform) const
 	return !operator==(transform);
 }
 
-DXWindow::DXWindow::DXWindow(std::wstring_view name, std::wstring_view title, uint32_t width, uint32_t height)
+DXWindow::DXWindow(std::wstring_view name, std::wstring_view title, uint32_t width, uint32_t height)
 	: is_open(false),
 	is_focus(false),
 	is_closing(false),
@@ -1947,16 +1944,14 @@ DXWindow::DXWindow::DXWindow(std::wstring_view name, std::wstring_view title, ui
 
 	cursors.push({ .Type = Cursors::Arrow, .Handle = LoadCursorA(NULL, IDC_ARROW) });
 	cursor = &cursors.top();
-
-	Create();
 }
 
-DXWindow::DXWindow::~DXWindow()
+DXWindow::~DXWindow()
 {
 	Destroy();
 }
 
-bool DXWindow::DXWindow::SetIcon(Icons value)
+bool DXWindow::SetIcon(Icons value)
 {
 	if ((value == Icons::UserDefined) || (value >= Icons::COUNT))
 		return false;
@@ -1975,7 +1970,7 @@ bool DXWindow::DXWindow::SetIcon(Icons value)
 
 	return true;
 }
-bool DXWindow::DXWindow::SetIcon(HICON value)
+bool DXWindow::SetIcon(HICON value)
 {
 	icon.Type   = Icons::UserDefined;
 	icon.Handle = value;
@@ -1992,7 +1987,7 @@ bool DXWindow::DXWindow::SetIcon(HICON value)
 	return true;
 }
 
-bool DXWindow::DXWindow::SetSize(uint32_t width, uint32_t height)
+bool DXWindow::SetSize(uint32_t width, uint32_t height)
 {
 	if (IsOpen())
 	{
@@ -2008,24 +2003,24 @@ bool DXWindow::DXWindow::SetSize(uint32_t width, uint32_t height)
 	return true;
 }
 
-void DXWindow::DXWindow::SetVSync(bool value)
+void DXWindow::SetVSync(bool value)
 {
 	is_vsync_enabled = value;
 }
 
-void DXWindow::DXWindow::SetBackground(const Color& value)
+void DXWindow::SetBackground(const Color& value)
 {
 	background_color = value;
 }
 
-bool DXWindow::DXWindow::PopClip()
+bool DXWindow::PopClip()
 {
 	bool       aa;
 	RectangleF bounds;
 
 	return PopClip(bounds, aa);
 }
-bool DXWindow::DXWindow::PopClip(RectangleF& bounds, bool& aa)
+bool DXWindow::PopClip(RectangleF& bounds, bool& aa)
 {
 	if (clips.empty())
 		return false;
@@ -2041,7 +2036,7 @@ bool DXWindow::DXWindow::PopClip(RectangleF& bounds, bool& aa)
 
 	return true;
 }
-void DXWindow::DXWindow::PushClip(const RectangleF& bounds, bool aa)
+void DXWindow::PushClip(const RectangleF& bounds, bool aa)
 {
 	clips.push_front({ .AA = aa, .Bounds = bounds });
 
@@ -2049,13 +2044,13 @@ void DXWindow::DXWindow::PushClip(const RectangleF& bounds, bool aa)
 		d2d1_render_target->PushAxisAlignedClip(D2D1::RectF(bounds.Left, bounds.Top, bounds.Right, bounds.Bottom), aa ? D2D1_ANTIALIAS_MODE_PER_PRIMITIVE : D2D1_ANTIALIAS_MODE_ALIASED);
 }
 
-bool DXWindow::DXWindow::PopCursor()
+bool DXWindow::PopCursor()
 {
 	Cursors value;
 
 	return PopCursor(value);
 }
-bool DXWindow::DXWindow::PopCursor(Cursors& value)
+bool DXWindow::PopCursor(Cursors& value)
 {
 	if (cursors.size() == 1)
 		return false;
@@ -2069,7 +2064,7 @@ bool DXWindow::DXWindow::PopCursor(Cursors& value)
 
 	return true;
 }
-bool DXWindow::DXWindow::PushCursor(Cursors value)
+bool DXWindow::PushCursor(Cursors value)
 {
 	if ((value == Cursors::UserDefined) || (value >= Cursors::COUNT))
 		return false;
@@ -2086,7 +2081,7 @@ bool DXWindow::DXWindow::PushCursor(Cursors value)
 
 	return true;
 }
-void DXWindow::DXWindow::PushCursor(HCURSOR value)
+void DXWindow::PushCursor(HCURSOR value)
 {
 	cursors.push({
 		.Type   = Cursors::UserDefined,
@@ -2099,13 +2094,13 @@ void DXWindow::DXWindow::PushCursor(HCURSOR value)
 		SetCursor(value);
 }
 
-bool DXWindow::DXWindow::PopTransform()
+bool DXWindow::PopTransform()
 {
 	Transform value;
 
 	return PopTransform(value);
 }
-bool DXWindow::DXWindow::PopTransform(Transform& value)
+bool DXWindow::PopTransform(Transform& value)
 {
 	if (transforms.size() == 1)
 		return false;
@@ -2119,7 +2114,7 @@ bool DXWindow::DXWindow::PopTransform(Transform& value)
 
 	return true;
 }
-void DXWindow::DXWindow::PushTransform(const Transform& value)
+void DXWindow::PushTransform(const Transform& value)
 {
 	transforms.push({
 		.Original = value,
@@ -2131,7 +2126,7 @@ void DXWindow::DXWindow::PushTransform(const Transform& value)
 		d2d1_render_target->SetTransform(transform->Modified);
 }
 
-bool DXWindow::DXWindow::DrawLine(const Vector2F* points, size_t count, const Brush& brush, float stroke_width)
+bool DXWindow::DrawLine(const Vector2F* points, size_t count, const Brush& brush, float stroke_width)
 {
 	if (!IsOpen())
 		return false;
@@ -2150,7 +2145,7 @@ bool DXWindow::DXWindow::DrawLine(const Vector2F* points, size_t count, const Br
 
 	return true;
 }
-bool DXWindow::DXWindow::DrawBitmap(float x, float y, const Bitmap& bitmap, float width, float height, float opacity)
+bool DXWindow::DrawBitmap(float x, float y, const Bitmap& bitmap, float width, float height, float opacity)
 {
 	if (!IsOpen())
 		return false;
@@ -2167,11 +2162,11 @@ bool DXWindow::DXWindow::DrawBitmap(float x, float y, const Bitmap& bitmap, floa
 
 	return true;
 }
-bool DXWindow::DXWindow::DrawBitmap(float x, float y, const Bitmap& bitmap, float width, float height, float opacity, const RectangleF& source)
+bool DXWindow::DrawBitmap(float x, float y, const Bitmap& bitmap, float width, float height, float opacity, const RectangleF& source)
 {
 	return DrawBitmap(x, y, bitmap, width, height, opacity, source.Left, source.Top, source.GetWidth(), source.GetHeight());
 }
-bool DXWindow::DXWindow::DrawBitmap(float x, float y, const Bitmap& bitmap, float width, float height, float opacity, float source_x, float source_y, float source_width, float source_height)
+bool DXWindow::DrawBitmap(float x, float y, const Bitmap& bitmap, float width, float height, float opacity, float source_x, float source_y, float source_width, float source_height)
 {
 	if (!IsOpen())
 		return false;
@@ -2189,7 +2184,7 @@ bool DXWindow::DXWindow::DrawBitmap(float x, float y, const Bitmap& bitmap, floa
 
 	return true;
 }
-bool DXWindow::DXWindow::DrawCircle(float x, float y, const Brush& brush, float radius, float stroke_width)
+bool DXWindow::DrawCircle(float x, float y, const Brush& brush, float radius, float stroke_width)
 {
 	if (!IsOpen())
 		return false;
@@ -2204,11 +2199,11 @@ bool DXWindow::DXWindow::DrawCircle(float x, float y, const Brush& brush, float 
 
 	return true;
 }
-bool DXWindow::DXWindow::DrawString(float x, float y, const Brush& brush, const TextFormat& format, std::wstring_view string)
+bool DXWindow::DrawString(float x, float y, const Brush& brush, const TextFormat& format, std::wstring_view string)
 {
 	return DrawString(x, y, brush, format, string, resolution.Width, resolution.Height);
 }
-bool DXWindow::DXWindow::DrawString(float x, float y, const Brush& brush, const TextFormat& format, std::wstring_view string, float width, float height)
+bool DXWindow::DrawString(float x, float y, const Brush& brush, const TextFormat& format, std::wstring_view string, float width, float height)
 {
 	if (!IsOpen())
 		return false;
@@ -2226,7 +2221,7 @@ bool DXWindow::DXWindow::DrawString(float x, float y, const Brush& brush, const 
 
 	return true;
 }
-bool DXWindow::DXWindow::DrawEllipse(float x, float y, const Brush& brush, float width, float height, float stroke_width)
+bool DXWindow::DrawEllipse(float x, float y, const Brush& brush, float width, float height, float stroke_width)
 {
 	if (!IsOpen())
 		return false;
@@ -2244,7 +2239,7 @@ bool DXWindow::DXWindow::DrawEllipse(float x, float y, const Brush& brush, float
 
 	return true;
 }
-bool DXWindow::DXWindow::DrawGeometry(float x, float y, const Brush& brush, const PathGeometry& geometry, float stroke_width)
+bool DXWindow::DrawGeometry(float x, float y, const Brush& brush, const PathGeometry& geometry, float stroke_width)
 {
 	if (!IsOpen())
 		return false;
@@ -2271,11 +2266,11 @@ bool DXWindow::DXWindow::DrawGeometry(float x, float y, const Brush& brush, cons
 
 	return true;
 }
-bool DXWindow::DXWindow::DrawRectangle(float x, float y, const Brush& brush, float width, float height, float stroke_width)
+bool DXWindow::DrawRectangle(float x, float y, const Brush& brush, float width, float height, float stroke_width)
 {
 	return DrawRectangle(x, y, brush, width, height, stroke_width, 0);
 }
-bool DXWindow::DXWindow::DrawRectangle(float x, float y, const Brush& brush, float width, float height, float stroke_width, float corner_radius)
+bool DXWindow::DrawRectangle(float x, float y, const Brush& brush, float width, float height, float stroke_width, float corner_radius)
 {
 	if (!IsOpen())
 		return false;
@@ -2293,7 +2288,7 @@ bool DXWindow::DXWindow::DrawRectangle(float x, float y, const Brush& brush, flo
 
 	return true;
 }
-bool DXWindow::DXWindow::DrawTextLayout(float x, float y, const Brush& brush, const TextLayout& layout)
+bool DXWindow::DrawTextLayout(float x, float y, const Brush& brush, const TextLayout& layout)
 {
 	if (!IsOpen())
 		return false;
@@ -2311,7 +2306,7 @@ bool DXWindow::DXWindow::DrawTextLayout(float x, float y, const Brush& brush, co
 
 	return true;
 }
-bool DXWindow::DXWindow::DrawSolidCircle(float x, float y, const Brush& brush, float radius)
+bool DXWindow::DrawSolidCircle(float x, float y, const Brush& brush, float radius)
 {
 	if (!IsOpen())
 		return false;
@@ -2326,7 +2321,7 @@ bool DXWindow::DXWindow::DrawSolidCircle(float x, float y, const Brush& brush, f
 
 	return true;
 }
-bool DXWindow::DXWindow::DrawSolidEllipse(float x, float y, const Brush& brush, float width, float height)
+bool DXWindow::DrawSolidEllipse(float x, float y, const Brush& brush, float width, float height)
 {
 	if (!IsOpen())
 		return false;
@@ -2344,7 +2339,7 @@ bool DXWindow::DXWindow::DrawSolidEllipse(float x, float y, const Brush& brush, 
 
 	return true;
 }
-bool DXWindow::DXWindow::DrawSolidGeometry(float x, float y, const Brush& brush, const PathGeometry& geometry)
+bool DXWindow::DrawSolidGeometry(float x, float y, const Brush& brush, const PathGeometry& geometry)
 {
 	if (!IsOpen())
 		return false;
@@ -2371,11 +2366,11 @@ bool DXWindow::DXWindow::DrawSolidGeometry(float x, float y, const Brush& brush,
 
 	return true;
 }
-bool DXWindow::DXWindow::DrawSolidRectangle(float x, float y, const Brush& brush, float width, float height)
+bool DXWindow::DrawSolidRectangle(float x, float y, const Brush& brush, float width, float height)
 {
 	return DrawSolidRectangle(x, y, brush, width, height, 0);
 }
-bool DXWindow::DXWindow::DrawSolidRectangle(float x, float y, const Brush& brush, float width, float height, float corner_radius)
+bool DXWindow::DrawSolidRectangle(float x, float y, const Brush& brush, float width, float height, float corner_radius)
 {
 	if (!IsOpen())
 		return false;
@@ -2517,7 +2512,7 @@ DXWindow::FileDialogResult  DXWindow::SaveFileDialog(std::wstring_view title, st
 	return FileDialog(title, directory, filter, filter_count, flags, &GetSaveFileNameW);
 }
 
-int  DXWindow::DXWindow::Poll()
+int     DXWindow::Poll()
 {
 	if (!IsOpen())
 		return -1;
@@ -2550,7 +2545,7 @@ int  DXWindow::DXWindow::Poll()
 
 	return 1;
 }
-bool DXWindow::DXWindow::Draw()
+bool    DXWindow::Draw()
 {
 	if (!IsOpen())
 		return false;
@@ -2559,17 +2554,6 @@ bool DXWindow::DXWindow::Draw()
 	{
 		if (!Graphics_Target_Clear() || !OnDraw())
 			return false;
-
-#ifdef DXWINDOW_IMGUI
-		ImGui::NewFrame();
-#endif
-
-		if (!OnDrawGUI())
-			return false;
-
-#ifdef DXWINDOW_IMGUI
-		ImGui::Render();
-#endif
 
 		switch (Graphics_Target_Present())
 		{
@@ -2588,21 +2572,11 @@ bool DXWindow::DXWindow::Draw()
 	return true;
 }
 
-void DXWindow::DXWindow::Close()
+bool    DXWindow::Open()
 {
 	if (IsOpen())
-	{
-		Resources_Unload(false);
+		return false;
 
-		Audio_Destroy();
-		Graphics_Destroy();
-
-		is_open = false;
-	}
-}
-
-bool DXWindow::DXWindow::Create()
-{
 	if (!(atom = RegisterClassExW(&clazz)))
 		return false;
 
@@ -2697,9 +2671,562 @@ bool DXWindow::DXWindow::Create()
 
 	is_open = true;
 
+	if (!OnOpen())
+	{
+		is_open = false;
+
+		Resources_Unload(false);
+
+		Graphics_Destroy();
+		Audio_Destroy();
+
+		DestroyWindow(handle);
+		UnregisterClassW(clazz.lpszClassName, clazz.hInstance);
+
+		return false;
+	}
+
 	return true;
 }
-void DXWindow::DXWindow::Destroy()
+void    DXWindow::Close()
+{
+	if (IsOpen())
+	{
+		OnClose();
+
+		Resources_Unload(false);
+
+		Audio_Destroy();
+		Graphics_Destroy();
+
+		is_open = false;
+	}
+}
+
+bool    DXWindow::OnOpen()
+{
+	return true;
+}
+void    DXWindow::OnClose()
+{
+}
+
+bool    DXWindow::OnPoll()
+{
+	return true;
+}
+
+bool    DXWindow::OnDraw()
+{
+	return true;
+}
+bool    DXWindow::OnClear()
+{
+	return true;
+}
+bool    DXWindow::OnPresent()
+{
+	return true;
+}
+
+bool    DXWindow::OnDropFile(const Vector2F& position, std::wstring_view path)
+{
+	return true;
+}
+
+bool    DXWindow::OnMouseMove(const Vector2F& position)
+{
+	return true;
+}
+bool    DXWindow::OnMouseScroll(const Vector2F& position, int delta)
+{
+	return true;
+}
+bool    DXWindow::OnMouseButtonUp(const Vector2F& position, MouseButtons button)
+{
+	return true;
+}
+bool    DXWindow::OnMouseButtonDown(const Vector2F& position, MouseButtons button)
+{
+	return true;
+}
+
+bool    DXWindow::OnKeyboardChar(wchar_t value)
+{
+	return true;
+}
+bool    DXWindow::OnKeyboardKeyUp(Keys key)
+{
+	return true;
+}
+bool    DXWindow::OnKeyboardKeyDown(Keys key)
+{
+	return true;
+}
+
+bool    DXWindow::OnResolutionChanged(uint32_t width, uint32_t height)
+{
+	return true;
+}
+
+LRESULT DXWindow::OnMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+	static auto get_mouse_position = [](LPARAM lParam)
+	{
+		auto points = MAKEPOINTS(lParam);
+
+		return Vector2F { .X = (float)points.x, .Y = (float)points.y };
+	};
+
+	static auto get_keyboard_key = [](WPARAM wParam)
+	{
+		switch (wParam)
+		{
+			case 0x41:        return Keys::A;
+			case 0x42:        return Keys::B;
+			case 0x43:        return Keys::C;
+			case 0x44:        return Keys::D;
+			case 0x45:        return Keys::E;
+			case 0x46:        return Keys::F;
+			case 0x47:        return Keys::G;
+			case 0x48:        return Keys::H;
+			case 0x49:        return Keys::I;
+			case 0x4A:        return Keys::J;
+			case 0x4B:        return Keys::K;
+			case 0x4C:        return Keys::L;
+			case 0x4D:        return Keys::M;
+			case 0x4E:        return Keys::N;
+			case 0x4F:        return Keys::O;
+			case 0x50:        return Keys::P;
+			case 0x51:        return Keys::Q;
+			case 0x52:        return Keys::R;
+			case 0x53:        return Keys::S;
+			case 0x54:        return Keys::T;
+			case 0x55:        return Keys::U;
+			case 0x56:        return Keys::V;
+			case 0x57:        return Keys::W;
+			case 0x58:        return Keys::X;
+			case 0x59:        return Keys::Y;
+			case 0x5A:        return Keys::Z;
+			case 0x30:        return Keys::Num0;
+			case 0x31:        return Keys::Num1;
+			case 0x32:        return Keys::Num2;
+			case 0x33:        return Keys::Num3;
+			case 0x34:        return Keys::Num4;
+			case 0x35:        return Keys::Num5;
+			case 0x36:        return Keys::Num6;
+			case 0x37:        return Keys::Num7;
+			case 0x38:        return Keys::Num8;
+			case 0x39:        return Keys::Num9;
+			case VK_NUMPAD0:  return Keys::NumPad0;
+			case VK_NUMPAD1:  return Keys::NumPad1;
+			case VK_NUMPAD2:  return Keys::NumPad2;
+			case VK_NUMPAD3:  return Keys::NumPad3;
+			case VK_NUMPAD4:  return Keys::NumPad4;
+			case VK_NUMPAD5:  return Keys::NumPad5;
+			case VK_NUMPAD6:  return Keys::NumPad6;
+			case VK_NUMPAD7:  return Keys::NumPad7;
+			case VK_NUMPAD8:  return Keys::NumPad8;
+			case VK_NUMPAD9:  return Keys::NumPad9;
+			case VK_F1:       return Keys::F1;
+			case VK_F2:       return Keys::F2;
+			case VK_F3:       return Keys::F3;
+			case VK_F4:       return Keys::F4;
+			case VK_F5:       return Keys::F5;
+			case VK_F6:       return Keys::F6;
+			case VK_F7:       return Keys::F7;
+			case VK_F8:       return Keys::F8;
+			case VK_F9:       return Keys::F9;
+			case VK_F10:      return Keys::F10;
+			case VK_F11:      return Keys::F11;
+			case VK_F12:      return Keys::F12;
+			case VK_OEM_3:    return Keys::Tilde;
+			case VK_MENU:     return Keys::Alt;
+			case VK_LMENU:    return Keys::LAlt;
+			case VK_RMENU:    return Keys::RAlt;
+			case VK_CLEAR:    return Keys::Clear;
+			case VK_DELETE:   return Keys::Delete;
+			case VK_RETURN:   return Keys::Enter;
+			case VK_ESCAPE:   return Keys::Escape;
+			case VK_BACK:     return Keys::Backspace;
+			case VK_CONTROL:  return Keys::Control;
+			case VK_LCONTROL: return Keys::LControl;
+			case VK_RCONTROL: return Keys::RControl;
+			case VK_SHIFT:    return Keys::Shift;
+			case VK_LSHIFT:   return Keys::LShift;
+			case VK_RSHIFT:   return Keys::RShift;
+			case VK_SPACE:    return Keys::Spacebar;
+			case VK_TAB:      return Keys::Tab;
+			case VK_UP:       return Keys::Up;
+			case VK_DOWN:     return Keys::Down;
+			case VK_LEFT:     return Keys::Left;
+			case VK_RIGHT:    return Keys::Right;
+		}
+
+		return Keys::COUNT;
+	};
+
+	switch (msg)
+	{
+		case WM_CUT:
+			// TODO: implement
+			// https://learn.microsoft.com/en-us/windows/win32/dataxchg/wm-cut
+			break;
+
+		case WM_CLEAR:
+			// TODO: implement
+			// https://learn.microsoft.com/en-us/windows/win32/dataxchg/wm-clear
+			break;
+
+		case WM_COPY:
+			// TODO: implement
+			// https://learn.microsoft.com/en-us/windows/win32/dataxchg/wm-copy
+			break;
+
+		case WM_PASTE:
+			// TODO: implement
+			// https://learn.microsoft.com/en-us/windows/win32/dataxchg/wm-paste
+			break;
+
+		case WM_SETICON:
+			switch (wParam)
+			{
+				case ICON_BIG:   clazz.hIcon   = (HICON)lParam; break;
+				case ICON_SMALL: clazz.hIconSm = (HICON)lParam; break;
+			}
+			break;
+
+		case WM_SETCURSOR:
+			if (is_mouse_in_client)
+				return TRUE;
+			break;
+
+		case WM_DROPFILES:
+		{
+			UINT file_count = DragQueryFileW((HDROP)wParam, 0xFFFFFFFF, NULL, 0);
+
+			for (UINT i = 0; i < file_count; ++i)
+			{
+				std::wstring file_path(DragQueryFileW((HDROP)wParam, i, NULL, 0) + 1, L'\0');
+				POINT        file_drop_position;
+
+				DragQueryFileW((HDROP)wParam, i, file_path.data(), (UINT)file_path.length());
+				DragQueryPoint((HDROP)wParam, &file_drop_position);
+
+				if (!OnDropFile({ .X = (float)file_drop_position.x, .Y = (float)file_drop_position.y }, file_path))
+				{
+					DragFinish((HDROP)wParam);
+					PostQuitMessage(0);
+
+					return 0;
+				}
+			}
+
+			DragFinish((HDROP)wParam);
+		}
+		return 0;
+
+		case WM_CLIPBOARDUPDATE:
+		{
+			int  format;
+			UINT formats[] = { CF_TEXT, CF_UNICODETEXT };
+
+			clipboard.IsSet = false;
+
+			if ((format = GetPriorityClipboardFormat(formats, sizeof(formats) / sizeof(UINT))) > 0)
+				if (OpenClipboard(hWnd))
+				{
+					if (auto hValue = GetClipboardData((UINT)format))
+						if (auto value = GlobalLock(hValue))
+						{
+							switch (format)
+							{
+								case CF_TEXT:
+									if (int length; (length = MultiByteToWideChar(CP_ACP, 0, (const char*)value, -1, NULL, 0)) > 0)
+									{
+										clipboard.IsSet = true;
+										clipboard.String.resize(length - 1);
+
+										MultiByteToWideChar(CP_ACP, 0, (const char*)value, -1, clipboard.String.data(), length);
+									}
+									break;
+
+								case CF_UNICODETEXT:
+									clipboard.IsSet = true;
+									clipboard.String.assign((const wchar_t*)value);
+									break;
+							}
+
+							GlobalUnlock(hValue);
+						}
+
+					CloseClipboard();
+				}
+		}
+		break;
+
+		case WM_DESTROYCLIPBOARD:
+			clipboard.IsSet = false;
+			clipboard.String.clear();
+			break;
+
+		case WM_CHAR:
+			if (std::iswprint(wParam) && !OnKeyboardChar((wchar_t)wParam))
+				Close();
+			break;
+
+		case WM_KEYUP:
+		{
+			Keys key;
+
+			if ((key = get_keyboard_key(wParam)) != Keys::COUNT)
+			{
+				keyboard.keys_down_prev[(int)key] = keyboard.keys_down[(int)key];
+				keyboard.keys_down[(int)key]      = false;
+
+				if (!OnKeyboardKeyUp(key))
+					Close();
+			}
+		}
+		break;
+
+		case WM_KEYDOWN:
+		{
+			Keys key;
+
+			if ((key = get_keyboard_key(wParam)) != Keys::COUNT)
+			{
+				keyboard.keys_down_prev[(int)key] = keyboard.keys_down[(int)key];
+				keyboard.keys_down[(int)key]      = true;
+
+				if (!OnKeyboardKeyDown(key))
+					Close();
+			}
+		}
+		break;
+
+		case WM_MOUSEMOVE:
+		{
+			is_mouse_in_client = true;
+
+			if (!is_mouse_track_enabled)
+			{
+				TRACKMOUSEEVENT event =
+				{
+					.cbSize    = sizeof(TRACKMOUSEEVENT),
+					.dwFlags   = TME_LEAVE,
+					.hwndTrack = hWnd
+				};
+
+				TrackMouseEvent(&event);
+
+				is_mouse_track_enabled = true;
+
+				SetCursor(cursor->Handle);
+			}
+
+			mouse.position = get_mouse_position(lParam);
+
+			if (!OnMouseMove(mouse.position))
+				Close();
+		}
+		break;
+
+		case WM_MOUSELEAVE:
+			is_mouse_in_client     = false;
+			is_mouse_track_enabled = false;
+			break;
+
+		case WM_MOUSEWHEEL:
+		{
+			POINT point = { LOWORD(lParam), HIWORD(lParam) };
+
+			if (ScreenToClient(hWnd, &point))
+			{
+				mouse.position = { .X = (float)point.x, .Y = (float)point.y };
+
+				if (!OnMouseScroll(mouse.position, GET_WHEEL_DELTA_WPARAM(wParam) / WHEEL_DELTA))
+					Close();
+			}
+		}
+		break;
+
+		case WM_LBUTTONUP:
+		{
+			mouse.position                                   = get_mouse_position(lParam);
+			mouse.buttons_down_prev[(int)MouseButtons::Left] = mouse.buttons_down[(int)MouseButtons::Left];
+			mouse.buttons_down[(int)MouseButtons::Left]      = false;
+
+			if (!OnMouseButtonUp(mouse.position, MouseButtons::Left))
+				Close();
+		}
+		break;
+		case WM_LBUTTONDOWN:
+		{
+			mouse.position                                   = get_mouse_position(lParam);
+			mouse.buttons_down_prev[(int)MouseButtons::Left] = mouse.buttons_down[(int)MouseButtons::Left];
+			mouse.buttons_down[(int)MouseButtons::Left]      = true;
+
+			if (!OnMouseButtonDown(mouse.position, MouseButtons::Left))
+				Close();
+		}
+		break;
+
+		case WM_RBUTTONUP:
+		{
+			mouse.position                                    = get_mouse_position(lParam);
+			mouse.buttons_down_prev[(int)MouseButtons::Right] = mouse.buttons_down[(int)MouseButtons::Right];
+			mouse.buttons_down[(int)MouseButtons::Right]      = false;
+
+			if (!OnMouseButtonUp(mouse.position, MouseButtons::Right))
+				Close();
+		}
+		break;
+		case WM_RBUTTONDOWN:
+		{
+			mouse.position                                    = get_mouse_position(lParam);
+			mouse.buttons_down_prev[(int)MouseButtons::Right] = mouse.buttons_down[(int)MouseButtons::Right];
+			mouse.buttons_down[(int)MouseButtons::Right]      = true;
+
+			if (!OnMouseButtonDown(mouse.position, MouseButtons::Right))
+				Close();
+		}
+		break;
+
+		case WM_MBUTTONUP:
+		{
+			mouse.position                                     = get_mouse_position(lParam);
+			mouse.buttons_down_prev[(int)MouseButtons::Middle] = mouse.buttons_down[(int)MouseButtons::Middle];
+			mouse.buttons_down[(int)MouseButtons::Middle]      = false;
+
+			if (!OnMouseButtonUp(mouse.position, MouseButtons::Middle))
+				Close();
+		}
+		break;
+		case WM_MBUTTONDOWN:
+		{
+			mouse.position                                     = get_mouse_position(lParam);
+			mouse.buttons_down_prev[(int)MouseButtons::Middle] = mouse.buttons_down[(int)MouseButtons::Middle];
+			mouse.buttons_down[(int)MouseButtons::Middle]      = true;
+
+			if (!OnMouseButtonDown(mouse.position, MouseButtons::Middle))
+				Close();
+		}
+		break;
+
+		case WM_XBUTTONUP:
+		{
+			mouse.position = get_mouse_position(lParam);
+
+			switch (GET_XBUTTON_WPARAM(wParam))
+			{
+				case XBUTTON1:
+					mouse.buttons_down_prev[(int)MouseButtons::X1] = mouse.buttons_down[(int)MouseButtons::X1];
+					mouse.buttons_down[(int)MouseButtons::X1]      = false;
+
+					if (!OnMouseButtonUp(mouse.position, MouseButtons::X1))
+						Close();
+					break;
+
+				case XBUTTON2:
+					mouse.buttons_down_prev[(int)MouseButtons::X2] = mouse.buttons_down[(int)MouseButtons::X2];
+					mouse.buttons_down[(int)MouseButtons::X2]      = false;
+
+					if (!OnMouseButtonUp(mouse.position, MouseButtons::X2))
+						Close();
+					break;
+			}
+		}
+		break;
+		case WM_XBUTTONDOWN:
+		{
+			mouse.position = get_mouse_position(lParam);
+
+			switch (GET_XBUTTON_WPARAM(wParam))
+			{
+				case XBUTTON1:
+					mouse.buttons_down_prev[(int)MouseButtons::X1] = mouse.buttons_down[(int)MouseButtons::X1];
+					mouse.buttons_down[(int)MouseButtons::X1]      = true;
+
+					if (!OnMouseButtonDown(mouse.position, MouseButtons::X1))
+						Close();
+					break;
+
+				case XBUTTON2:
+					mouse.buttons_down_prev[(int)MouseButtons::X2] = mouse.buttons_down[(int)MouseButtons::X2];
+					mouse.buttons_down[(int)MouseButtons::X2]      = true;
+
+					if (!OnMouseButtonDown(mouse.position, MouseButtons::X2))
+						Close();
+					break;
+			}
+		}
+		break;
+
+		case WM_MOVE:
+			position.X = LOWORD(lParam);
+			position.Y = HIWORD(lParam);
+			break;
+
+		case WM_SIZE:
+		{
+			auto window_resize = [this](HWND hWnd, LPARAM lParam)
+			{
+				RECT rect = {};
+				GetWindowRect(hWnd, &rect);
+
+				if (((rect.right - rect.left) != size.Width) || (rect.bottom - rect.top) != size.Height)
+				{
+					size.Width        = rect.right - rect.left;
+					size.Height       = rect.bottom - rect.top;
+					resolution.Width  = LOWORD(lParam);
+					resolution.Height = HIWORD(lParam);
+					is_resize_pending = true;
+				}
+			};
+
+			switch (wParam)
+			{
+				case SIZE_MAXIMIZED:
+					is_minimized = false;
+					is_maximized = true;
+					window_resize(hWnd, lParam);
+					break;
+
+				case SIZE_RESTORED:
+					is_minimized = false;
+					is_maximized = false;
+					window_resize(hWnd, lParam);
+					break;
+
+				case SIZE_MINIMIZED:
+					is_minimized = true;
+					is_maximized = false;
+					break;
+			}
+		}
+		break;
+
+		case WM_SYSCOMMAND:
+			if ((wParam & 0xFFF0) == SC_KEYMENU)
+				return 0;
+			break;
+
+		case WM_CREATE:
+			SetWindowLongPtrW(hWnd, GWLP_USERDATA, (LONG_PTR)this);
+			AddClipboardFormatListener(hWnd);
+			break;
+
+		case WM_DESTROY:
+			RemoveClipboardFormatListener(hWnd);
+			PostQuitMessage(0);
+			return 0;
+	}
+
+	return DefWindowProcW(hWnd, msg, wParam, lParam);
+}
+
+void DXWindow::Destroy()
 {
 	if (IsOpen())
 		Close();
@@ -2708,7 +3235,7 @@ void DXWindow::DXWindow::Destroy()
 	UnregisterClassW(clazz.lpszClassName, clazz.hInstance);
 }
 
-bool DXWindow::DXWindow::Audio_Create()
+bool DXWindow::Audio_Create()
 {
 	HRESULT hResult;
 
@@ -2725,7 +3252,7 @@ bool DXWindow::DXWindow::Audio_Create()
 
 	return true;
 }
-void DXWindow::DXWindow::Audio_Destroy()
+void DXWindow::Audio_Destroy()
 {
 	if (dsound_factory)
 	{
@@ -2734,7 +3261,7 @@ void DXWindow::DXWindow::Audio_Destroy()
 	}
 }
 
-bool DXWindow::DXWindow::Graphics_Create()
+bool DXWindow::Graphics_Create()
 {
 	// Direct3D
 	{
@@ -2908,29 +3435,11 @@ bool DXWindow::DXWindow::Graphics_Create()
 		}
 	}
 
-#ifdef DXWINDOW_IMGUI
-	IMGUI_CHECKVERSION();
-	ImGui::CreateContext();
-	ImGui_ImplWin32_Init(handle);
-	// ImGui_ImplWin32_EnableDpiAwareness();
-	ImGui_ImplDX11_Init(d3d11_device, d3d11_device_context);
-	ImGui::GetIO().IniFilename = nullptr;
-	// ImGui::StyleColorsDark();
-	// ImGui::StyleColorsLight();
-	// ImGui::StyleColorsClassic();
-#endif
-
 	return true;
 }
-void DXWindow::DXWindow::Graphics_Destroy()
+void DXWindow::Graphics_Destroy()
 {
 	Graphics_Target_Destroy();
-
-#ifdef DXWINDOW_IMGUI
-	ImGui_ImplDX11_Shutdown();
-	ImGui_ImplWin32_Shutdown();
-	ImGui::DestroyContext();
-#endif
 
 	// Direct2D
 	{
@@ -2976,7 +3485,7 @@ void DXWindow::DXWindow::Graphics_Destroy()
 		}
 	}
 }
-bool DXWindow::DXWindow::Graphics_Target_Create()
+bool DXWindow::Graphics_Target_Create()
 {
 	if (!d2d1_factory || !d3d11_device || !d3d11_device_context || !dxgi_swap_chain)
 		return false;
@@ -3048,7 +3557,7 @@ bool DXWindow::DXWindow::Graphics_Target_Create()
 
 	return true;
 }
-void DXWindow::DXWindow::Graphics_Target_Destroy()
+void DXWindow::Graphics_Target_Destroy()
 {
 	// Direct2D
 	{
@@ -3077,7 +3586,7 @@ void DXWindow::DXWindow::Graphics_Target_Destroy()
 		}
 	}
 }
-bool DXWindow::DXWindow::Graphics_Target_Clear()
+bool DXWindow::Graphics_Target_Clear()
 {
 	if (!d2d1_render_target || !dxgi_swap_chain || !d3d11_render_target_view)
 		return false;
@@ -3110,17 +3619,18 @@ bool DXWindow::DXWindow::Graphics_Target_Clear()
 	d2d1_render_target->BeginDraw();
 	d2d1_render_target->SetTransform(transform->Modified);
 
-#ifdef DXWINDOW_IMGUI
-	ImGui_ImplDX11_NewFrame();
-	ImGui_ImplWin32_NewFrame();
-#endif
+	if (!OnClear())
+		return false;
 
 	return true;
 }
-int  DXWindow::DXWindow::Graphics_Target_Present()
+int  DXWindow::Graphics_Target_Present()
 {
 	if (!d2d1_render_target || !dxgi_swap_chain)
 		return false;
+
+	if (!OnPresent())
+		return 0;
 
 	HRESULT hResult;
 
@@ -3131,10 +3641,6 @@ int  DXWindow::DXWindow::Graphics_Target_Present()
 
 		return 0;
 	}
-
-#ifdef DXWINDOW_IMGUI
-	ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
-#endif
 
 	if (FAILED((hResult = dxgi_swap_chain->Present(IsVSync() ? 1 : 0, 0))))
 	{
@@ -3151,7 +3657,7 @@ int  DXWindow::DXWindow::Graphics_Target_Present()
 	return 1;
 }
 
-bool DXWindow::DXWindow::Resources_Load(bool is_reload)
+bool DXWindow::Resources_Load(bool is_reload)
 {
 	is_content_loaded = true;
 
@@ -3179,7 +3685,7 @@ bool DXWindow::DXWindow::Resources_Load(bool is_reload)
 
 	return true;
 }
-void DXWindow::DXWindow::Resources_Unload(bool is_reload)
+void DXWindow::Resources_Unload(bool is_reload)
 {
 	for (auto it = resources.rbegin(); it != resources.rend(); ++it)
 	{
@@ -3192,7 +3698,7 @@ void DXWindow::DXWindow::Resources_Unload(bool is_reload)
 	is_content_loaded = false;
 }
 
-bool DXWindow::DXWindow::Resource_Add(IResource* resource)
+bool DXWindow::Resource_Add(IResource* resource)
 {
 	if (d2d1_render_target && d3d11_render_target_view && !resource->Load())
 		return false;
@@ -3201,7 +3707,7 @@ bool DXWindow::DXWindow::Resource_Add(IResource* resource)
 
 	return true;
 }
-bool DXWindow::DXWindow::Resource_Remove(IResource* resource)
+bool DXWindow::Resource_Remove(IResource* resource)
 {
 	if (auto it = resources.find(resource); it != resources.end())
 	{
@@ -3215,19 +3721,19 @@ bool DXWindow::DXWindow::Resource_Remove(IResource* resource)
 
 	return false;
 }
-void DXWindow::DXWindow::Resource_Move(IResource* source, IResource* destination)
+void DXWindow::Resource_Move(IResource* source, IResource* destination)
 {
 	if (auto it = resources.find(source); it != resources.end())
 		resources.erase(it);
 
 	resources.emplace(destination);
 }
-bool DXWindow::DXWindow::Resource_Copy(const IResource* source, const IResource* destination)
+bool DXWindow::Resource_Copy(const IResource* source, const IResource* destination)
 {
 	return Resource_Add((IResource*)destination);
 }
 
-DXWindow::FileDialogResult DXWindow::DXWindow::FileDialog(std::wstring_view title, std::wstring_view directory, const FileDialogFilter* filter, size_t filter_count, FileDialogFlags flags, BOOL(*function)(LPOPENFILENAMEW))
+DXWindow::FileDialogResult DXWindow::FileDialog(std::wstring_view title, std::wstring_view directory, const FileDialogFilter* filter, size_t filter_count, FileDialogFlags flags, BOOL(*function)(LPOPENFILENAMEW))
 {
 	size_t filter_size = 0;
 
@@ -3297,502 +3803,19 @@ DXWindow::FileDialogResult DXWindow::DXWindow::FileDialog(std::wstring_view titl
 	return ofn_result;
 }
 
-LRESULT  CALLBACK DXWindow::DXWindow::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
+LRESULT  CALLBACK DXWindow::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
-#ifdef DXWINDOW_IMGUI
-	if (ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
-		return TRUE;
-#endif
-
-	static auto get_mouse_position = [](LPARAM lParam)
-	{
-		auto points = MAKEPOINTS(lParam);
-
-		return Vector2F { .X = (float)points.x, .Y = (float)points.y };
-	};
-
-	static auto get_keyboard_key = [](WPARAM wParam)
-	{
-		switch (wParam)
-		{
-			case 0x41:        return Keys::A;
-			case 0x42:        return Keys::B;
-			case 0x43:        return Keys::C;
-			case 0x44:        return Keys::D;
-			case 0x45:        return Keys::E;
-			case 0x46:        return Keys::F;
-			case 0x47:        return Keys::G;
-			case 0x48:        return Keys::H;
-			case 0x49:        return Keys::I;
-			case 0x4A:        return Keys::J;
-			case 0x4B:        return Keys::K;
-			case 0x4C:        return Keys::L;
-			case 0x4D:        return Keys::M;
-			case 0x4E:        return Keys::N;
-			case 0x4F:        return Keys::O;
-			case 0x50:        return Keys::P;
-			case 0x51:        return Keys::Q;
-			case 0x52:        return Keys::R;
-			case 0x53:        return Keys::S;
-			case 0x54:        return Keys::T;
-			case 0x55:        return Keys::U;
-			case 0x56:        return Keys::V;
-			case 0x57:        return Keys::W;
-			case 0x58:        return Keys::X;
-			case 0x59:        return Keys::Y;
-			case 0x5A:        return Keys::Z;
-			case 0x30:        return Keys::Num0;
-			case 0x31:        return Keys::Num1;
-			case 0x32:        return Keys::Num2;
-			case 0x33:        return Keys::Num3;
-			case 0x34:        return Keys::Num4;
-			case 0x35:        return Keys::Num5;
-			case 0x36:        return Keys::Num6;
-			case 0x37:        return Keys::Num7;
-			case 0x38:        return Keys::Num8;
-			case 0x39:        return Keys::Num9;
-			case VK_NUMPAD0:  return Keys::NumPad0;
-			case VK_NUMPAD1:  return Keys::NumPad1;
-			case VK_NUMPAD2:  return Keys::NumPad2;
-			case VK_NUMPAD3:  return Keys::NumPad3;
-			case VK_NUMPAD4:  return Keys::NumPad4;
-			case VK_NUMPAD5:  return Keys::NumPad5;
-			case VK_NUMPAD6:  return Keys::NumPad6;
-			case VK_NUMPAD7:  return Keys::NumPad7;
-			case VK_NUMPAD8:  return Keys::NumPad8;
-			case VK_NUMPAD9:  return Keys::NumPad9;
-			case VK_F1:       return Keys::F1;
-			case VK_F2:       return Keys::F2;
-			case VK_F3:       return Keys::F3;
-			case VK_F4:       return Keys::F4;
-			case VK_F5:       return Keys::F5;
-			case VK_F6:       return Keys::F6;
-			case VK_F7:       return Keys::F7;
-			case VK_F8:       return Keys::F8;
-			case VK_F9:       return Keys::F9;
-			case VK_F10:      return Keys::F10;
-			case VK_F11:      return Keys::F11;
-			case VK_F12:      return Keys::F12;
-			case VK_OEM_3:    return Keys::Tilde;
-			case VK_MENU:     return Keys::Alt;
-			case VK_LMENU:    return Keys::LAlt;
-			case VK_RMENU:    return Keys::RAlt;
-			case VK_CLEAR:    return Keys::Clear;
-			case VK_DELETE:   return Keys::Delete;
-			case VK_RETURN:   return Keys::Enter;
-			case VK_ESCAPE:   return Keys::Escape;
-			case VK_BACK:     return Keys::Backspace;
-			case VK_CONTROL:  return Keys::Control;
-			case VK_LCONTROL: return Keys::LControl;
-			case VK_RCONTROL: return Keys::RControl;
-			case VK_SHIFT:    return Keys::Shift;
-			case VK_LSHIFT:   return Keys::LShift;
-			case VK_RSHIFT:   return Keys::RShift;
-			case VK_SPACE:    return Keys::Spacebar;
-			case VK_TAB:      return Keys::Tab;
-			case VK_UP:       return Keys::Up;
-			case VK_DOWN:     return Keys::Down;
-			case VK_LEFT:     return Keys::Left;
-			case VK_RIGHT:    return Keys::Right;
-		}
-
-		return Keys::COUNT;
-	};
-
-	switch (msg)
-	{
-		case WM_CUT:
-			// TODO: implement
-			// https://learn.microsoft.com/en-us/windows/win32/dataxchg/wm-cut
-			break;
-
-		case WM_CLEAR:
-			// TODO: implement
-			// https://learn.microsoft.com/en-us/windows/win32/dataxchg/wm-clear
-			break;
-
-		case WM_COPY:
-			// TODO: implement
-			// https://learn.microsoft.com/en-us/windows/win32/dataxchg/wm-copy
-			break;
-
-		case WM_PASTE:
-			// TODO: implement
-			// https://learn.microsoft.com/en-us/windows/win32/dataxchg/wm-paste
-			break;
-
-		case WM_SETICON:
-			if (auto window = (DXWindow*)GetWindowLongPtrW(hWnd, GWLP_USERDATA))
-				switch (wParam)
-				{
-					case ICON_BIG:   window->clazz.hIcon   = (HICON)lParam; break;
-					case ICON_SMALL: window->clazz.hIconSm = (HICON)lParam; break;
-				}
-			break;
-
-		case WM_SETCURSOR:
-			if (auto window = (DXWindow*)GetWindowLongPtrW(hWnd, GWLP_USERDATA))
-				if (window->is_mouse_in_client)
-					return TRUE;
-			break;
-
-		case WM_DROPFILES:
-			if (auto window = (DXWindow*)GetWindowLongPtrW(hWnd, GWLP_USERDATA))
-			{
-				UINT file_count = DragQueryFileW((HDROP)wParam, 0xFFFFFFFF, NULL, 0);
-
-				for (UINT i = 0; i < file_count; ++i)
-				{
-					std::wstring file_path(DragQueryFileW((HDROP)wParam, i, NULL, 0) + 1, L'\0');
-					POINT        file_drop_position;
-
-					DragQueryFileW((HDROP)wParam, i, file_path.data(), (UINT)file_path.length());
-					DragQueryPoint((HDROP)wParam, &file_drop_position);
-
-					if (!window->OnDropFile({ .X = (float)file_drop_position.x, .Y = (float)file_drop_position.y }, file_path))
-					{
-						DragFinish((HDROP)wParam);
-						PostQuitMessage(0);
-
-						return 0;
-					}
-				}
-
-				DragFinish((HDROP)wParam);
-
-				return 0;
-			}
-			break;
-
-		case WM_CLIPBOARDUPDATE:
-			if (auto window = (DXWindow*)GetWindowLongPtrW(hWnd, GWLP_USERDATA))
-			{
-				int  format;
-				UINT formats[] = { CF_TEXT, CF_UNICODETEXT };
-
-				window->clipboard.IsSet = false;
-
-				if ((format = GetPriorityClipboardFormat(formats, sizeof(formats) / sizeof(UINT))) > 0)
-					if (OpenClipboard(hWnd))
-					{
-						if (auto hValue = GetClipboardData((UINT)format))
-							if (auto value = GlobalLock(hValue))
-							{
-								switch (format)
-								{
-									case CF_TEXT:
-										if (int length; (length = MultiByteToWideChar(CP_ACP, 0, (const char*)value, -1, NULL, 0)) > 0)
-										{
-											window->clipboard.IsSet = true;
-											window->clipboard.String.resize(length - 1);
-
-											MultiByteToWideChar(CP_ACP, 0, (const char*)value, -1, window->clipboard.String.data(), length);
-										}
-										break;
-
-									case CF_UNICODETEXT:
-										window->clipboard.IsSet = true;
-										window->clipboard.String.assign((const wchar_t*)value);
-										break;
-								}
-
-								GlobalUnlock(hValue);
-							}
-
-						CloseClipboard();
-					}
-			}
-			break;
-
-		case WM_DESTROYCLIPBOARD:
-			if (auto window = (DXWindow*)GetWindowLongPtrW(hWnd, GWLP_USERDATA))
-			{
-				window->clipboard.IsSet = false;
-				window->clipboard.String.clear();
-			}
-			break;
-
-		case WM_CHAR:
-			if (auto window = (DXWindow*)GetWindowLongPtrW(hWnd, GWLP_USERDATA))
-				if (std::iswprint(wParam) && !window->OnKeyboardChar((wchar_t)wParam))
-					window->Close();
-			break;
-
-		case WM_KEYUP:
-			if (auto window = (DXWindow*)GetWindowLongPtrW(hWnd, GWLP_USERDATA))
-			{
-				Keys key;
-
-				if ((key = get_keyboard_key(wParam)) != Keys::COUNT)
-				{
-					window->keyboard.keys_down_prev[(int)key] = window->keyboard.keys_down[(int)key];
-					window->keyboard.keys_down[(int)key]      = false;
-
-					if (!window->OnKeyboardKeyUp(key))
-						window->Close();
-				}
-			}
-			break;
-
-		case WM_KEYDOWN:
-			if (auto window = (DXWindow*)GetWindowLongPtrW(hWnd, GWLP_USERDATA))
-			{
-				Keys key;
-
-				if ((key = get_keyboard_key(wParam)) != Keys::COUNT)
-				{
-					window->keyboard.keys_down_prev[(int)key] = window->keyboard.keys_down[(int)key];
-					window->keyboard.keys_down[(int)key]      = true;
-
-					if (!window->OnKeyboardKeyDown(key))
-						window->Close();
-				}
-			}
-			break;
-
-		case WM_MOUSEMOVE:
-			if (auto window = (DXWindow*)GetWindowLongPtrW(hWnd, GWLP_USERDATA))
-			{
-				window->is_mouse_in_client = true;
-
-				if (!window->is_mouse_track_enabled)
-				{
-					TRACKMOUSEEVENT event =
-					{
-						.cbSize    = sizeof(TRACKMOUSEEVENT),
-						.dwFlags   = TME_LEAVE,
-						.hwndTrack = hWnd
-					};
-
-					TrackMouseEvent(&event);
-
-					window->is_mouse_track_enabled = true;
-
-					SetCursor(window->cursor->Handle);
-				}
-
-				window->mouse.position = get_mouse_position(lParam);
-
-				if (!window->OnMouseMove(window->mouse.position))
-					window->Close();
-			}
-			break;
-
-		case WM_MOUSELEAVE:
-			if (auto window = (DXWindow*)GetWindowLongPtrW(hWnd, GWLP_USERDATA))
-			{
-				window->is_mouse_in_client     = false;
-				window->is_mouse_track_enabled = false;
-			}
-			break;
-
-		case WM_MOUSEWHEEL:
-			if (auto window = (DXWindow*)GetWindowLongPtrW(hWnd, GWLP_USERDATA))
-			{
-				POINT point = { LOWORD(lParam), HIWORD(lParam) };
-
-				if (ScreenToClient(hWnd, &point))
-				{
-					window->mouse.position = { .X = (float)point.x, .Y = (float)point.y };
-
-					if (!window->OnMouseScroll(window->mouse.position, GET_WHEEL_DELTA_WPARAM(wParam) / WHEEL_DELTA))
-						window->Close();
-				}
-			}
-			break;
-
-		case WM_LBUTTONUP:
-			if (auto window = (DXWindow*)GetWindowLongPtrW(hWnd, GWLP_USERDATA))
-			{
-				window->mouse.position                                   = get_mouse_position(lParam);
-				window->mouse.buttons_down_prev[(int)MouseButtons::Left] = window->mouse.buttons_down[(int)MouseButtons::Left];
-				window->mouse.buttons_down[(int)MouseButtons::Left]      = false;
-
-				if (!window->OnMouseButtonUp(window->mouse.position, MouseButtons::Left))
-					window->Close();
-			}
-			break;
-		case WM_LBUTTONDOWN:
-			if (auto window = (DXWindow*)GetWindowLongPtrW(hWnd, GWLP_USERDATA))
-			{
-				window->mouse.position                                   = get_mouse_position(lParam);
-				window->mouse.buttons_down_prev[(int)MouseButtons::Left] = window->mouse.buttons_down[(int)MouseButtons::Left];
-				window->mouse.buttons_down[(int)MouseButtons::Left]      = true;
-
-				if (!window->OnMouseButtonDown(window->mouse.position, MouseButtons::Left))
-					window->Close();
-			}
-			break;
-
-		case WM_RBUTTONUP:
-			if (auto window = (DXWindow*)GetWindowLongPtrW(hWnd, GWLP_USERDATA))
-			{
-				window->mouse.position                                    = get_mouse_position(lParam);
-				window->mouse.buttons_down_prev[(int)MouseButtons::Right] = window->mouse.buttons_down[(int)MouseButtons::Right];
-				window->mouse.buttons_down[(int)MouseButtons::Right]      = false;
-
-				if (!window->OnMouseButtonUp(window->mouse.position, MouseButtons::Right))
-					window->Close();
-			}
-			break;
-		case WM_RBUTTONDOWN:
-			if (auto window = (DXWindow*)GetWindowLongPtrW(hWnd, GWLP_USERDATA))
-			{
-				window->mouse.position                                    = get_mouse_position(lParam);
-				window->mouse.buttons_down_prev[(int)MouseButtons::Right] = window->mouse.buttons_down[(int)MouseButtons::Right];
-				window->mouse.buttons_down[(int)MouseButtons::Right]      = true;
-
-				if (!window->OnMouseButtonDown(window->mouse.position, MouseButtons::Right))
-					window->Close();
-			}
-			break;
-
-		case WM_MBUTTONUP:
-			if (auto window = (DXWindow*)GetWindowLongPtrW(hWnd, GWLP_USERDATA))
-			{
-				window->mouse.position                                     = get_mouse_position(lParam);
-				window->mouse.buttons_down_prev[(int)MouseButtons::Middle] = window->mouse.buttons_down[(int)MouseButtons::Middle];
-				window->mouse.buttons_down[(int)MouseButtons::Middle]      = false;
-
-				if (!window->OnMouseButtonUp(window->mouse.position, MouseButtons::Middle))
-					window->Close();
-			}
-			break;
-		case WM_MBUTTONDOWN:
-			if (auto window = (DXWindow*)GetWindowLongPtrW(hWnd, GWLP_USERDATA))
-			{
-				window->mouse.position                                     = get_mouse_position(lParam);
-				window->mouse.buttons_down_prev[(int)MouseButtons::Middle] = window->mouse.buttons_down[(int)MouseButtons::Middle];
-				window->mouse.buttons_down[(int)MouseButtons::Middle]      = true;
-
-				if (!window->OnMouseButtonDown(window->mouse.position, MouseButtons::Middle))
-					window->Close();
-			}
-			break;
-
-		case WM_XBUTTONUP:
-			if (auto window = (DXWindow*)GetWindowLongPtrW(hWnd, GWLP_USERDATA))
-			{
-				window->mouse.position = get_mouse_position(lParam);
-
-				switch (GET_XBUTTON_WPARAM(wParam))
-				{
-					case XBUTTON1:
-						window->mouse.buttons_down_prev[(int)MouseButtons::X1] = window->mouse.buttons_down[(int)MouseButtons::X1];
-						window->mouse.buttons_down[(int)MouseButtons::X1]      = false;
-
-						if (!window->OnMouseButtonUp(window->mouse.position, MouseButtons::X1))
-							window->Close();
-						break;
-
-					case XBUTTON2:
-						window->mouse.buttons_down_prev[(int)MouseButtons::X2] = window->mouse.buttons_down[(int)MouseButtons::X2];
-						window->mouse.buttons_down[(int)MouseButtons::X2]      = false;
-
-						if (!window->OnMouseButtonUp(window->mouse.position, MouseButtons::X2))
-							window->Close();
-						break;
-				}
-			}
-			break;
-		case WM_XBUTTONDOWN:
-			if (auto window = (DXWindow*)GetWindowLongPtrW(hWnd, GWLP_USERDATA))
-			{
-				window->mouse.position = get_mouse_position(lParam);
-
-				switch (GET_XBUTTON_WPARAM(wParam))
-				{
-					case XBUTTON1:
-						window->mouse.buttons_down_prev[(int)MouseButtons::X1] = window->mouse.buttons_down[(int)MouseButtons::X1];
-						window->mouse.buttons_down[(int)MouseButtons::X1]      = true;
-
-						if (!window->OnMouseButtonDown(window->mouse.position, MouseButtons::X1))
-							window->Close();
-						break;
-
-					case XBUTTON2:
-						window->mouse.buttons_down_prev[(int)MouseButtons::X2] = window->mouse.buttons_down[(int)MouseButtons::X2];
-						window->mouse.buttons_down[(int)MouseButtons::X2]      = true;
-
-						if (!window->OnMouseButtonDown(window->mouse.position, MouseButtons::X2))
-							window->Close();
-						break;
-				}
-			}
-			break;
-
-		case WM_MOVE:
-			if (auto window = (DXWindow*)GetWindowLongPtrW(hWnd, GWLP_USERDATA))
-			{
-				window->position.X = LOWORD(lParam);
-				window->position.Y = HIWORD(lParam);
-			}
-			break;
-
-		case WM_SIZE:
-			if (auto window = (DXWindow*)GetWindowLongPtrW(hWnd, GWLP_USERDATA))
-			{
-				auto window_resize = [](DXWindow* window, HWND hWnd, LPARAM lParam)
-				{
-					RECT rect = {};
-					GetWindowRect(hWnd, &rect);
-
-					if (((rect.right - rect.left) != window->size.Width) ||
-						(rect.bottom - rect.top) != window->size.Height)
-					{
-						window->size.Width        = rect.right - rect.left;
-						window->size.Height       = rect.bottom - rect.top;
-						window->resolution.Width  = LOWORD(lParam);
-						window->resolution.Height = HIWORD(lParam);
-						window->is_resize_pending = true;
-					}
-				};
-
-				switch (wParam)
-				{
-					case SIZE_MAXIMIZED:
-						window->is_minimized = false;
-						window->is_maximized = true;
-						window_resize(window, hWnd, lParam);
-						break;
-
-					case SIZE_RESTORED:
-						window->is_minimized = false;
-						window->is_maximized = false;
-						window_resize(window, hWnd, lParam);
-						break;
-
-					case SIZE_MINIMIZED:
-						window->is_minimized = true;
-						window->is_maximized = false;
-						break;
-				}
-			}
-			break;
-
-		case WM_SYSCOMMAND:
-			if ((wParam & 0xFFF0) == SC_KEYMENU)
-				return 0;
-			break;
-
-		case WM_CREATE:
-			if (auto create = (CREATESTRUCTA*)lParam)
-				if (auto window = (DXWindow*)create->lpCreateParams)
-				{
-					SetWindowLongPtrW(hWnd, GWLP_USERDATA, (LONG_PTR)window);
-					AddClipboardFormatListener(hWnd);
-				}
-			break;
-
-		case WM_DESTROY:
-			RemoveClipboardFormatListener(hWnd);
-			PostQuitMessage(0);
-			return 0;
-	}
+	if (msg == WM_CREATE)
+		if (auto create = (CREATESTRUCTA*)lParam)
+			if (auto window = (DXWindow*)create->lpCreateParams)
+				return window->OnMessage(hWnd, msg, wParam, lParam);
+
+	if (auto window = (DXWindow*)GetWindowLongPtrW(hWnd, GWLP_USERDATA))
+		return window->OnMessage(hWnd, msg, wParam, lParam);
 
 	return DefWindowProcW(hWnd, msg, wParam, lParam);
 }
-UINT_PTR CALLBACK DXWindow::DXWindow::FileDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
+UINT_PTR CALLBACK DXWindow::FileDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	if (msg == WM_NOTIFY)
 		if (auto notify = (LPOFNOTIFYW)lParam; notify->hdr.code == CDN_SELCHANGE)

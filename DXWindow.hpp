@@ -19,12 +19,6 @@
 #include <commdlg.h>
 #include <Windows.h>
 
-#ifdef DXWINDOW_IMGUI
-	#include <imgui.h>
-	#include <imgui_impl_dx11.h>
-	#include <imgui_impl_win32.h>
-#endif
-
 #undef MessageBox
 
 class DXWindow
@@ -1626,6 +1620,11 @@ public:
 		return cursor ? cursor->Type : Cursors::None;
 	}
 
+	constexpr auto  GetHandle() const
+	{
+		return handle;
+	}
+
 	constexpr auto& GetMouse() const
 	{
 		return mouse;
@@ -1654,6 +1653,56 @@ public:
 	constexpr auto& GetResolution() const
 	{
 		return resolution;
+	}
+
+	constexpr auto  GetWICFactory() const
+	{
+		return wic_factory;
+	}
+
+	constexpr auto  GetDSoundFactory() const
+	{
+		return dsound_factory;
+	}
+
+	constexpr auto  GetDXGISwapChain() const
+	{
+		return dxgi_swap_chain;
+	}
+
+	constexpr auto  GetDWriteFactory() const
+	{
+		return dwrite_factory;
+	}
+
+	constexpr auto  GetDirect2DFactory() const
+	{
+		return d2d1_factory;
+	}
+
+	constexpr auto  GetDirect2DRenderTarget() const
+	{
+		return d2d1_render_target;
+	}
+
+	constexpr auto  GetDirect2DDeviceContext() const
+	{
+		return d2d1_device_context;
+	}
+
+	constexpr auto  GetDirect3DDevice() const
+	{
+		return d3d11_device;
+	}
+
+	constexpr auto  GetDirect3DDeviceContext() const
+	{
+		return d3d11_device_context;
+	}
+
+	constexpr auto  GetDirect3DRenderTargetView() const
+	{
+		return d3d11_render_target_view;
 	}
 
 	bool              SetIcon(Icons value);
@@ -1707,29 +1756,35 @@ public:
 	int  Poll();
 	bool Draw();
 
+	bool Open();
 	void Close();
 
 protected:
-	virtual bool OnPoll() = 0;
+	virtual bool    OnOpen();
+	virtual void    OnClose();
 
-	virtual bool OnDraw() = 0;
-	virtual bool OnDrawGUI() = 0;
+	virtual bool    OnPoll();
 
-	virtual bool OnDropFile(const Vector2F& position, std::wstring_view path) = 0;
+	virtual bool    OnDraw();
+	virtual bool    OnClear();
+	virtual bool    OnPresent();
 
-	virtual bool OnMouseMove(const Vector2F& position) = 0;
-	virtual bool OnMouseScroll(const Vector2F& position, int delta) = 0;
-	virtual bool OnMouseButtonUp(const Vector2F& position, MouseButtons button) = 0;
-	virtual bool OnMouseButtonDown(const Vector2F& position, MouseButtons button) = 0;
+	virtual bool    OnDropFile(const Vector2F& position, std::wstring_view path);
 
-	virtual bool OnKeyboardChar(wchar_t value) = 0;
-	virtual bool OnKeyboardKeyUp(Keys key) = 0;
-	virtual bool OnKeyboardKeyDown(Keys key) = 0;
+	virtual bool    OnMouseMove(const Vector2F& position);
+	virtual bool    OnMouseScroll(const Vector2F& position, int delta);
+	virtual bool    OnMouseButtonUp(const Vector2F& position, MouseButtons button);
+	virtual bool    OnMouseButtonDown(const Vector2F& position, MouseButtons button);
 
-	virtual bool OnResolutionChanged(uint32_t width, uint32_t height) = 0;
+	virtual bool    OnKeyboardChar(wchar_t value);
+	virtual bool    OnKeyboardKeyUp(Keys key);
+	virtual bool    OnKeyboardKeyDown(Keys key);
+
+	virtual bool    OnResolutionChanged(uint32_t width, uint32_t height);
+
+	virtual LRESULT OnMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 private:
-	bool Create();
 	void Destroy();
 
 	bool Audio_Create();
