@@ -35,6 +35,9 @@ public:
 protected:
 	virtual bool OnPoll() override
 	{
+		if (!DXWindow::OnPoll())
+			return false;
+
 		if ((hue += 0.001f) > 1.0f)
 			hue = 0;
 
@@ -46,6 +49,9 @@ protected:
 
 	virtual bool OnDraw() override
 	{
+		if (!DXWindow::OnDraw())
+			return false;
+
 		if (!DrawSolidGeometry(100, 100, brush, geometry))
 			return false;
 
